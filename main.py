@@ -35,3 +35,31 @@ def chat_endpoint(prompt: Prompt):
 		return {"response": res.text}
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
+	
+class LayoutResponse(BaseModel):
+	innerHTML: str
+
+@app.patch("/update-layout")
+def update_layout(response: LayoutResponse):
+	layout: dict = response.model_dump()
+	# Store layout in database
+	return {"response": "Updated successfully"}
+
+@app.get("/get-saved-layout/{layout_no}")
+def get_saved_layout(layout_no: int):
+	'''0 = newest, 3 - oldest'''
+	if layout_no < 0 or layout_no > 3:
+		raise HTTPException(status_code=500, detail='Inaccessible index')
+	# Get the layout (as innerHTML)
+	# if unable to get layout:
+	#	raise HTTPException(status_code=501, detail='No layouts have been stored in this database.')
+	# return {"response": layout_innerHTML}
+
+@app.post("/create-new-layout")
+def create_new_layout(response: LayoutResponse):
+	# TEST: If any layouts have been stored, if there exists one:
+	# 	raise HTTPException(status_code=500, detail='Unable to create a new layout as there already exists one in the database.')
+	
+	layout: dict = response.model_dump()
+	# Store layout in database
+	return {"response": "Created successfully"}
