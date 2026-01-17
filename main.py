@@ -1,60 +1,89 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
 import google.genai
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import json
 
 load_dotenv(".env")
-MONGODB_URL = os.getenv("MONGODB_URL")
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 app = FastAPI()
 
 app.add_middleware(
-	CORSMiddleware,
-	allow_origins=["*"],
-	allow_credentials=True,
-	allow_methods=["*"],
-	allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-class Prompt(BaseModel):
-	prompt: str
+class ChatRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=50_000)
+    innerHTML: str = Field(..., min_length=1, max_length=1_000_000)
 	
 # Placeholder
 @app.post("/chat")
-def chat_endpoint(user_prompt: Prompt):
-	api_key = os.getenv("GEMINI_API_KEY")
-	if not api_key:
-		raise HTTPException(status_code=500, detail="Gemini API key not found")
-	if len(user_prompt.prompt) > 1048576:
-		raise HTTPException(status_code=500, detail="Your message is too long")
-	try:
-		gemini_prompt = \
-		f'''
-		You are a web designer and you are given the innerHTML of a website as well as the user's prompt to modify
-		the innerHTML such that it fits their criteria.
+async def chat_endpoint(req: ChatRequest):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="Gemini API key not found")
 
-		The user prompt is {user_prompt}.
+    try:
+        gemini_prompt = f"""
+You are a web designer.
 
-		Without further elaboration, return ONLY a JSON response as follows afterwards (such that it's under 65,536 tokens in total):
-		{{
-			"reason": <Insert your reasons for changing in a paragraph>,
-			"changes": <Insert the modified innerHTML>,
-			"theme": <any of "Indigo", "Emerald", "Rose", "Cyan", "Amber", "Violet">
-		}}
-		'''
-		client = google.genai.Client(api_key=api_key)
-		res = client.models.generate_content(
-			model="gemini-3-pro-preview",
-			contents=gemini_prompt
-		)
-		return {"response": res.text}
-	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
+Current innerHTML:
+{req.innerHTML}
+
+User request:
+{req.prompt}
+
+Return ONLY valid JSON (no markdown, no extra text) in this exact format:
+{{
+  "reason": "one short paragraph explaining what you changed",
+  "changes": "the full modified innerHTML string",
+  "theme": "Indigo"
+}}
+Where theme must be one of: Indigo, Emerald, Rose, Cyan, Amber, Violet.
+"""
+
+        client = google.genai.Client(api_key=GEMINI_API_KEY)
+        res = client.models.generate_content(
+            model="gemini-3-pro-preview",
+            contents=gemini_prompt
+        )
+
+        text = (res.text or "").strip()
+
+        # Try to parse JSON safely (Gemini sometimes adds text)
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise HTTPException(status_code=500, detail="Gemini did not return JSON")
+
+        data = json.loads(text[start:end+1])
+
+        # Validate required fields exist
+        for k in ("reason", "changes", "theme"):
+            if k not in data:
+                raise HTTPException(status_code=500, detail=f"Missing field in Gemini response: {k}")
+
+        if data["theme"] not in ["Indigo", "Emerald", "Rose", "Cyan", "Amber", "Violet"]:
+            raise HTTPException(status_code=400, detail="Invalid theme returned by Gemini")
+
+        if len(data["changes"]) > 1_000_000:
+            raise HTTPException(status_code=400, detail="AI output too large")
+
+        return data
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Gemini returned invalid JSON")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 	
 class LayoutResponse(BaseModel):
 	innerHTML: str
