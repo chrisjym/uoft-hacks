@@ -1,11 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
 import google.genai
 from pydantic import BaseModel
+import json
 
 load_dotenv(".env")
+MONGODB_URL = os.getenv("MONGODB_URL")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 app = FastAPI()
 
@@ -16,10 +20,6 @@ app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
-
-
-
-
 
 class Prompt(BaseModel):
 	prompt: str
