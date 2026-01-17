@@ -9,3 +9,5 @@ pip install python-dotenv
 pip install -q -U google-genai
 
 python -m pip install "pymongo[srv]"
+
+Run command: uv run uvicorn main:app --reload
