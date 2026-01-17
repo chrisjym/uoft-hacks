@@ -24,7 +24,10 @@ class ChatRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=50_000)
     innerHTML: str = Field(..., min_length=1, max_length=1_000_000)
 	
-# Placeholder
+@app.get("/health")
+def health_check():
+     return {"response": "All good!"}
+
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     if not GEMINI_API_KEY:
