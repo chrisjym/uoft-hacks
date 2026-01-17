@@ -17,20 +17,40 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
+
+
+
+
 class Prompt(BaseModel):
 	prompt: str
 	
 # Placeholder
 @app.post("/chat")
-def chat_endpoint(prompt: Prompt):
+def chat_endpoint(user_prompt: Prompt):
 	api_key = os.getenv("GEMINI_API_KEY")
 	if not api_key:
 		raise HTTPException(status_code=500, detail="Gemini API key not found")
+	if len(user_prompt.prompt) > 1048576:
+		raise HTTPException(status_code=500, detail="Your message is too long")
 	try:
+		gemini_prompt = \
+		f'''
+		You are a web designer and you are given the innerHTML of a website as well as the user's prompt to modify
+		the innerHTML such that it fits their criteria.
+
+		The user prompt is {user_prompt}.
+
+		Without further elaboration, return ONLY a JSON response as follows afterwards (such that it's under 65,536 tokens in total):
+		{{
+			"reason": <Insert your reasons for changing in a paragraph>,
+			"changes": <Insert the modified innerHTML>,
+			"theme": <any of "Indigo", "Emerald", "Rose", "Cyan", "Amber", "Violet">
+		}}
+		'''
 		client = google.genai.Client(api_key=api_key)
 		res = client.models.generate_content(
-			model="gemini-2.5-flash",
-			contents=f"Given the prompt \"{prompt}\", determine if it's a country or not. If it's a country, then state its capital"
+			model="gemini-3-pro-preview",
+			contents=gemini_prompt
 		)
 		return {"response": res.text}
 	except Exception as e:
