@@ -126,52 +126,82 @@ async def chat_endpoint(req: ChatRequest):
 
     try:
         gemini_prompt = f"""
-You are an assistant helping edit a website layout.
+You are an assistant that edits a website layout based on natural-language user requests.
 
-You will output changes as an array of actions. Do NOT output HTML.
+The user speaks normally (NOT JSON). You must interpret intent and return STRICT JSON only.
 
-The frontend supports ONLY these action objects in the "changes" array:
+PAGE STRUCTURE (default order):
+0. hero (top, full-width)
+1. featured-products (left below hero)
+2. newsletter (right beside products)
+3. testimonials (full-width below)
+4. footer (bottom)
 
-1) Move a component:
-{{ "type": "move", "component": "hero|featured-products|testimonials|newsletter|footer", "position": "top|bottom|<number>" }}
+COMPONENT IDS & COMMON SYNONYMS:
+- hero: top section, header, banner, intro, landing, top of page
+- featured-products: products, shop, catalog, store
+- newsletter: newsletter, email signup, subscribe box
+- testimonials: reviews, ratings, customer feedback
+- footer: footer, bottom section
 
-2) Remove a component:
-{{ "type": "remove", "component": "hero|featured-products|testimonials|newsletter|footer" }}
+REARRANGEMENT RULES:
+- “move X to top/bottom” → move X
+- If target position is occupied → SWAP components
+- “swap X and Y” → swap their positions
+- “move X above/below Y” → place X directly before/after Y
+- Never invent components or layouts
+
+ALLOWED ACTIONS (ONLY THESE):
+1) Move:
+{{
+  "type": "move",
+  "component": "hero|featured-products|newsletter|testimonials|footer",
+  "position": "top|bottom|<number>"
+}}
+
+2) Remove:
+{{ "type": "remove", "component": "<id>" }}
 
 3) Toggle visibility:
-{{ "type": "toggle_visibility", "component": "hero|featured-products|testimonials|newsletter|footer", "visible": true|false }}
+{{ "type": "toggle_visibility", "component": "<id>", "visible": true|false }}
 
-4) Update text content in a section:
-{{ "type": "update_props", "component": "hero|featured-products|testimonials|newsletter|footer",
-  "section": "<one of the provided section keys>", "props": {{ "<key>": "<string value>" }} }}
+4) Update content:
+{{ "type": "update_props", "component": "<id>", "section": "<key>", "props": {{ "<k>": "<v>" }} }}
 
 5) Update theme:
-{{ "type": "update_theme", "theme": {{ "primaryColor": "indigo|emerald|rose|amber|cyan|violet",
-  "spacing": "compact|comfortable", "mode": "light|dark" }} }}
-
-IMPORTANT RULES:
-- Return ONLY valid JSON, no markdown, no extra text.
-- "changes" must be an array of action objects.
-- Use only these components: hero, featured-products, testimonials, newsletter, footer.
-- If you are unsure, return an empty changes array [] and explain in "reason".
-- Keep the number of actions small (max 8).
-
-Context (current HTML for reference only, do NOT output HTML):
-{req.innerHTML}
-
-User request:
-{req.prompt}
-
-Return ONLY this JSON format:
 {{
-  "reason": "one short paragraph",
-  "changes": [ /* array of action objects */ ],
+  "type": "update_theme",
   "theme": {{
     "primaryColor": "indigo|emerald|rose|amber|cyan|violet",
     "spacing": "compact|comfortable",
     "mode": "light|dark"
   }}
 }}
+
+RULES:
+- Output ONLY valid JSON
+- Max 8 actions
+- No HTML, no markdown
+- If unclear → changes: [] and explain why
+- Change theme ONLY if user asks for style/color/mood
+
+CONTEXT (read-only):
+{req.innerHTML}
+
+User request:
+{req.prompt}
+
+OUTPUT FORMAT:
+{{
+  "reason": "Short explanation",
+  "changes": [],
+  "theme": {{
+    "primaryColor": "indigo|emerald|rose|amber|cyan|violet",
+    "spacing": "compact|comfortable",
+    "mode": "light|dark"
+  }}
+}}
+
 """
 
         client = google.genai.Client(api_key=GEMINI_API_KEY)
